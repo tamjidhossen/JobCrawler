@@ -17,6 +17,22 @@ class SchedulerService {
       return;
     }
     logger.info('Starting Scheduler service...');
+
+    // Prevent immediate scrape on startup if overdue
+    const config = queries.getSchedulerConfig();
+    if (config && config.is_running) {
+      const lastRun = config.last_run_at ? new Date(config.last_run_at).getTime() : 0;
+      const intervalMs = config.interval_hours * 60 * 60 * 1000;
+      const now = Date.now();
+
+      if (now - lastRun >= intervalMs) {
+        const nowStr = new Date(now).toISOString();
+        const nextStr = new Date(now + intervalMs).toISOString();
+        queries.updateSchedulerRunTimes(nowStr, nextStr);
+        logger.info(`[Scheduler] Scrape cycle was overdue on startup. Resetting schedule (next run in ${config.interval_hours} hours) to prevent immediate crawling.`);
+      }
+    }
+
     await this.tick();
   }
 
@@ -214,7 +230,7 @@ class SchedulerService {
       let newJobsCount = 0;
       let newExtractedJobs = [];
 
-      // Only call Gemini if there are new detail pages crawled
+      // Only call extraction if there are new detail pages crawled
       if (detailPages > 0) {
         logger.info(`[${company.name}] Step 3: Sending new details to Gemini (reading file in chunks)...`);
         newExtractedJobs = await batchExtractJobs(company.name, company.career_url, filePath);
@@ -242,7 +258,7 @@ class SchedulerService {
           }
         }
       } else {
-        logger.info(`[${company.name}] Step 3: Skipping Gemini extraction (0 new job detail pages).`);
+        logger.info(`[${company.name}] Step 3: Skipping extraction (0 new job details).`);
       }
 
       queries.updateCompanyScraped(company.id);
@@ -271,7 +287,6 @@ class SchedulerService {
     logger.info(`[${company.name}] No detail links found. Falling back to full extraction.`);
     logger.info(`[${company.name}] Step 3: Sending all page text to Gemini (reading file in chunks)...`);
     const extractedJobs = await batchExtractJobs(company.name, company.career_url, filePath);
-
     if (extractedJobs.length === 0) {
       logger.warn(`[${company.name}] Gemini extracted 0 jobs. Page may require auth or use unsupported rendering.`);
     }

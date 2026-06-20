@@ -9,9 +9,11 @@ const state = {
   filters: {
     keyword: '',
     titleKeyword: '',
+    excludeTitleKeyword: '',
     companyId: '',
     status: 'new', // Default filter to 'new' postings as requested by flow
     jobType: '',
+    techOnly: '',
     page: 1,
     limit: 25
   },
@@ -42,9 +44,11 @@ const els = {
   // Search & Filters
   searchInput: document.getElementById('search-input'),
   filterTitleKeyword: document.getElementById('filter-title-keyword'),
+  excludeTitleKeyword: document.getElementById('exclude-title-keyword'),
   filterCompany: document.getElementById('filter-company'),
   filterStatus: document.getElementById('filter-status'),
   filterType: document.getElementById('filter-type'),
+  filterTechOnly: document.getElementById('filter-tech-only'),
   btnClearFilters: document.getElementById('btn-clear-filters'),
 
   // Lists Containers
@@ -83,6 +87,16 @@ const els = {
   modalJobDescription: document.getElementById('modal-job-description'),
   btnApplyJob: document.getElementById('btn-apply-job'),
   btnDeleteJob: document.getElementById('btn-delete-job'),
+
+  // Edit Company Modal
+  companyModal: document.getElementById('company-modal'),
+  companyModalClose: document.getElementById('company-modal-close'),
+  editCompanyForm: document.getElementById('edit-company-form'),
+  editCompanyId: document.getElementById('edit-company-id'),
+  editCompanyName: document.getElementById('edit-company-name'),
+  editCompanyUrl: document.getElementById('edit-company-url'),
+  editCompanyStatus: document.getElementById('edit-company-status'),
+  btnCancelEditCompany: document.getElementById('btn-cancel-edit-company'),
 
   // Toast Container
   toastContainer: document.getElementById('toast-container')
@@ -266,12 +280,15 @@ function renderCompaniesList() {
     item.innerHTML = `
       <div class="company-name-section" title="${statusTitle}">
         <span class="company-name">${company.name}</span>
-        <span class="company-url">${hostname}</span>
+        <span class="company-url">${company.career_url || 'No Link'}</span>
       </div>
       <div class="company-controls">
         <span class="company-status-indicator ${statusClass}" title="${statusTitle}"></span>
         <button class="btn btn-secondary btn-sm btn-scrape-company" data-id="${company.id}" title="Scrape career page now">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        </button>
+        <button class="btn btn-secondary btn-sm btn-edit-company" data-id="${company.id}" title="Edit company details">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg>
         </button>
         <button class="btn btn-secondary btn-sm btn-delete-company text-danger" data-id="${company.id}" title="Delete company & jobs">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/></svg>
@@ -292,6 +309,14 @@ function renderCompaniesList() {
       } finally {
         btn.disabled = false;
       }
+    });
+
+    item.querySelector('.btn-edit-company').addEventListener('click', () => {
+      els.editCompanyId.value = company.id;
+      els.editCompanyName.value = company.name;
+      els.editCompanyUrl.value = company.career_url;
+      els.editCompanyStatus.value = company.status;
+      els.companyModal.style.display = 'flex';
     });
 
     item.querySelector('.btn-delete-company').addEventListener('click', async () => {
@@ -529,6 +554,12 @@ els.filterType.addEventListener('change', () => {
   loadJobs();
 });
 
+els.filterTechOnly.addEventListener('change', () => {
+  state.filters.techOnly = els.filterTechOnly.value;
+  state.filters.page = 1;
+  loadJobs();
+});
+
 // Debounced Search Input
 els.searchInput.addEventListener('input', () => {
   clearTimeout(state.searchDebounceTimer);
@@ -549,19 +580,33 @@ els.filterTitleKeyword.addEventListener('input', () => {
   }, 300);
 });
 
+// Debounced Exclude Title Keyword Input
+els.excludeTitleKeyword.addEventListener('input', () => {
+  clearTimeout(state.searchDebounceTimer);
+  state.searchDebounceTimer = setTimeout(() => {
+    state.filters.excludeTitleKeyword = els.excludeTitleKeyword.value.trim();
+    state.filters.page = 1;
+    loadJobs();
+  }, 300);
+});
+
 // Clear Filters Click
 els.btnClearFilters.addEventListener('click', () => {
   els.searchInput.value = '';
   els.filterTitleKeyword.value = '';
+  els.excludeTitleKeyword.value = '';
   els.filterCompany.value = '';
   els.filterStatus.value = ''; // Let's keep status empty (All Statuses) on clear
   els.filterType.value = '';
+  els.filterTechOnly.value = '';
   
   state.filters.keyword = '';
   state.filters.titleKeyword = '';
+  state.filters.excludeTitleKeyword = '';
   state.filters.companyId = '';
   state.filters.status = '';
   state.filters.jobType = '';
+  state.filters.techOnly = '';
   state.filters.page = 1;
   
   loadJobs();
@@ -604,6 +649,37 @@ els.modalClose.addEventListener('click', closeJobModal);
 window.addEventListener('click', (e) => {
   if (e.target === els.jobModal) {
     closeJobModal();
+  }
+});
+
+
+// Edit Company Modal Close
+const closeCompanyModal = () => {
+  els.companyModal.style.display = 'none';
+};
+els.companyModalClose.addEventListener('click', closeCompanyModal);
+els.btnCancelEditCompany.addEventListener('click', closeCompanyModal);
+window.addEventListener('click', (e) => {
+  if (e.target === els.companyModal) {
+    closeCompanyModal();
+  }
+});
+
+// Edit Company Form Submit
+els.editCompanyForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = parseInt(els.editCompanyId.value);
+  const name = els.editCompanyName.value;
+  const career_url = els.editCompanyUrl.value;
+  const status = els.editCompanyStatus.value;
+
+  try {
+    await api.updateCompany(id, { name, career_url, status });
+    showToast('Company updated successfully.', 'success');
+    closeCompanyModal();
+    await refreshAllData();
+  } catch (err) {
+    showToast(err.message, 'error');
   }
 });
 

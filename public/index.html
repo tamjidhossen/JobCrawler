@@ -162,9 +162,7 @@
     .company-url {
       font-size: 0.675rem;
       color: #9f958a;
-      text-overflow: ellipsis;
-      overflow: hidden;
-      white-space: nowrap;
+      word-break: break-all;
     }
     .company-controls {
       display: flex;
@@ -557,8 +555,8 @@
     <main class="flex flex-col gap-5">
       
       <!-- Stats Bar: Structured to align exactly with Dashboard Grid Columns on desktop -->
-      <section class="grid grid-cols-1 lg:grid-cols-4 gap-5 items-stretch">
-        <div class="lg:col-span-3 grid grid-cols-3 gap-5">
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
+        <div class="lg:col-span-2 grid grid-cols-3 gap-5">
           <!-- Card 1 -->
           <div class="bg-claude-card border border-claude-border rounded-lg p-4 shadow-sm flex flex-col gap-1">
             <div class="text-2xl font-serif font-medium leading-none" id="stat-total-jobs">0</div>
@@ -583,10 +581,10 @@
       </section>
 
       <!-- Dashboard Layout Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-4 gap-5 items-start">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         
         <!-- Left Column: Job Feed (Main Focus) -->
-        <section class="lg:col-span-3 flex flex-col gap-5 min-w-0">
+        <section class="lg:col-span-2 flex flex-col gap-5 min-w-0">
           
           <!-- Filters Card -->
           <div class="bg-claude-card border border-claude-border rounded-lg p-5 shadow-sm flex flex-col gap-4">
@@ -595,10 +593,15 @@
               <input type="text" id="search-input" placeholder="Search by title, location, keywords..." autocomplete="off" class="bg-transparent border-none text-xs md:text-sm text-claude-text outline-none w-full py-0.5">
             </div>
             
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
+            <!-- Row 1 of filters -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
               <div class="flex flex-col gap-1.5 min-w-0">
                 <label for="filter-title-keyword" class="text-[10px] uppercase tracking-wider font-semibold text-claude-muted">Job Title Keywords</label>
                 <input type="text" id="filter-title-keyword" placeholder="e.g. QA, Engineer" autocomplete="off" class="bg-claude-bg border border-claude-border text-claude-text rounded-lg px-3 py-1.5 text-xs outline-none focus:border-claude-accent w-full">
+              </div>
+              <div class="flex flex-col gap-1.5 min-w-0">
+                <label for="exclude-title-keyword" class="text-[10px] uppercase tracking-wider font-semibold text-claude-muted">Exclude Title Keywords</label>
+                <input type="text" id="exclude-title-keyword" placeholder="e.g. Senior, Lead" autocomplete="off" class="bg-claude-bg border border-claude-border text-claude-text rounded-lg px-3 py-1.5 text-xs outline-none focus:border-claude-accent w-full">
               </div>
               <div class="flex flex-col gap-1.5 min-w-0">
                 <label for="filter-company" class="text-[10px] uppercase tracking-wider font-semibold text-claude-muted">Company</label>
@@ -606,6 +609,10 @@
                   <option value="">All Companies</option>
                 </select>
               </div>
+            </div>
+
+            <!-- Row 2 of filters -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
               <div class="flex flex-col gap-1.5 min-w-0">
                 <label for="filter-status" class="text-[10px] uppercase tracking-wider font-semibold text-claude-muted">Status</label>
                 <select id="filter-status" class="custom-select">
@@ -623,6 +630,13 @@
                   <option value="Part-time">Part-time</option>
                   <option value="Contract">Contract</option>
                   <option value="Internship">Internship</option>
+                </select>
+              </div>
+              <div class="flex flex-col gap-1.5 min-w-0">
+                <label for="filter-tech-only" class="text-[10px] uppercase tracking-wider font-semibold text-claude-muted">Category</label>
+                <select id="filter-tech-only" class="custom-select">
+                  <option value="">All Jobs</option>
+                  <option value="true">Tech Jobs Only</option>
                 </select>
               </div>
               <button id="btn-clear-filters" class="btn btn-secondary text-xs h-[32px] w-full">Clear</button>
@@ -686,7 +700,7 @@
                   <option value="24">Every 24 Hours</option>
                 </select>
               </div>
-              
+
               <div class="flex flex-col gap-2 pt-2 border-t border-claude-border mt-1 text-xs">
                 <div class="flex justify-between">
                   <span class="text-claude-muted">Last Checked:</span>
@@ -761,6 +775,39 @@
         </div>
       </div>
     </div>
+
+    <!-- Edit Company Modal -->
+    <div id="company-modal" class="modal" style="display: none;">
+      <div class="modal-content max-w-sm">
+        <div class="modal-header">
+          <h2 class="font-serif text-base font-medium">Edit Company</h2>
+          <button id="company-modal-close" class="btn-close">&times;</button>
+        </div>
+        <form id="edit-company-form" class="flex flex-col gap-4 p-2">
+          <input type="hidden" id="edit-company-id">
+          <div class="flex flex-col gap-1.5">
+            <label for="edit-company-name" class="text-xs text-claude-muted font-medium">Company Name</label>
+            <input type="text" id="edit-company-name" required class="bg-claude-bg border border-claude-border text-claude-text rounded-lg px-3 py-1.5 text-xs outline-none focus:border-claude-accent w-full">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label for="edit-company-url" class="text-xs text-claude-muted font-medium">Career Page URL</label>
+            <input type="url" id="edit-company-url" required class="bg-claude-bg border border-claude-border text-claude-text rounded-lg px-3 py-1.5 text-xs outline-none focus:border-claude-accent w-full">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label for="edit-company-status" class="text-xs text-claude-muted font-medium">Status</label>
+            <select id="edit-company-status" class="custom-select">
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="error">Error</option>
+            </select>
+          </div>
+          <div class="flex justify-end gap-2 pt-3 border-t border-claude-border mt-2">
+            <button type="button" id="btn-cancel-edit-company" class="btn btn-secondary px-4 py-1.5 text-xs">Cancel</button>
+            <button type="submit" class="btn btn-primary px-4 py-1.5 text-xs">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 
   <script src="/js/api.js" type="module"></script>
@@ -798,7 +845,7 @@
       wrapper.appendChild(trigger);
 
       const popover = document.createElement('div');
-      popover.className = 'absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-claude-border bg-claude-card p-1 text-xs text-claude-text shadow-lg focus:outline-none hidden custom-select-popover';
+      popover.className = 'absolute z-50 mt-1 max-h-60 min-w-full w-max max-w-[250px] overflow-x-hidden overflow-y-auto rounded-md border border-claude-border bg-claude-card p-1 text-xs text-claude-text shadow-lg focus:outline-none hidden custom-select-popover';
       wrapper.appendChild(popover);
 
       // Move select inside the wrapper

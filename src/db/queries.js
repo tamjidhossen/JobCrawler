@@ -77,7 +77,7 @@ export const updateCompanyListingHash = (id, hash) => {
 // JOBS QUERIES
 // ==========================================
 
-export const getFilteredJobs = ({ keyword, titleKeyword, companyId, status, jobType, limit = 25, offset = 0 }) => {
+export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, companyId, status, jobType, techOnly, limit = 25, offset = 0 }) => {
   let query = `
     SELECT j.*, c.name as company_name 
     FROM jobs j
@@ -87,14 +87,46 @@ export const getFilteredJobs = ({ keyword, titleKeyword, companyId, status, jobT
   const params = [];
 
   if (keyword) {
-    query += ` AND (j.title LIKE ? OR j.description LIKE ? OR j.location LIKE ? OR c.name LIKE ?)`;
-    const kw = `%${keyword}%`;
-    params.push(kw, kw, kw, kw);
+    const kws = keyword.split(',').map(k => k.trim()).filter(Boolean);
+    if (kws.length > 0) {
+      const clause = kws.map(() => `(j.title LIKE ? OR j.description LIKE ? OR j.location LIKE ? OR c.name LIKE ?)`).join(' OR ');
+      query += ` AND (${clause})`;
+      kws.forEach(kw => {
+        const pattern = `%${kw}%`;
+        params.push(pattern, pattern, pattern, pattern);
+      });
+    }
   }
 
   if (titleKeyword) {
-    query += ` AND j.title LIKE ?`;
-    params.push(`%${titleKeyword}%`);
+    const kws = titleKeyword.split(',').map(k => k.trim()).filter(Boolean);
+    if (kws.length > 0) {
+      const clause = kws.map(() => `j.title LIKE ?`).join(' OR ');
+      query += ` AND (${clause})`;
+      kws.forEach(kw => {
+        params.push(`%${kw}%`);
+      });
+    }
+  }
+
+  if (excludeTitleKeyword) {
+    const kws = excludeTitleKeyword.split(',').map(k => k.trim()).filter(Boolean);
+    if (kws.length > 0) {
+      const clause = kws.map(() => `j.title NOT LIKE ?`).join(' AND ');
+      query += ` AND (${clause})`;
+      kws.forEach(kw => {
+        params.push(`%${kw}%`);
+      });
+    }
+  }
+
+  if (techOnly === 'true' || techOnly === true) {
+    const techKeywords = ['dev', 'developer', 'devops', 'qa', 'engineer', 'intern', 'architect', 'programmer', 'analyst', 'data', 'designer', 'support', 'admin', 'system', 'security', 'software', 'frontend', 'backend', 'fullstack', 'tech', 'technology', 'scrum', 'product manager'];
+    const clause = techKeywords.map(() => `j.title LIKE ?`).join(' OR ');
+    query += ` AND (${clause})`;
+    techKeywords.forEach(kw => {
+      params.push(`%${kw}%`);
+    });
   }
 
   if (companyId) {

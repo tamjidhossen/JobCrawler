@@ -422,24 +422,30 @@ function buildPrompt(companyName, careerUrl, chunk, chunkIndex, includeSchemaHin
   const schemaSection = includeSchemaHint ? '' : `\n${SCHEMA_DESCRIPTION}\n`;
 
   return `
-You are a recruitment data extraction engine.
+You are an expert recruitment data extraction engine.
 
 The text below was scraped from the careers site of "${companyName}" (${careerUrl}).
 It includes listing pages AND individual job detail pages, each labeled with its source URL.
 
-Extract ALL job postings you can identify. For each job:
+Extract ALL active individual job postings you can identify.
+
+CRITICAL RULES:
+1. DO NOT extract services/consulting offerings or staff augmentation options (e.g. "React.js developers", "Angular.js developers", "Next.js developers", "Hire Developers"). These are services/sales pages, not jobs!
+2. DO NOT extract department landing pages, team overviews, or division descriptions (e.g. "Software Engineering", "Manufacturing & Engineering", "ReliSource Partner of Excellence").
+3. DO NOT extract corporate news, general portals, culture blogs, picnics, or team activities (e.g. "Life at 6sense: Where Work Meets Joy!").
+4. DO NOT extract placeholder labels or navigation buttons like "Apply Now", "Join Our Team", "Open Positions" as job titles.
+5. Merge listing + detail page data for the same job into ONE entry — use the most complete version.
+6. Do NOT invent data — only extract what is actually in the text.
+
+For each job, extract:
 - title: Job title (REQUIRED — skip if absent)
 - description: Role summary from the detail page text (up to 500 chars, prefer the detail page over the listing snippet)
 - location: City/Country, "Remote", or "Hybrid"
 - department: Team or department (e.g. Engineering, Sales, Design)
 - job_type: "Full-time", "Part-time", "Contract", "Internship" — leave blank if unknown
-- job_url: Direct link to that specific job posting (look at the section label "Job Detail N: <url>")
+- job_url: Direct link to that specific job posting (look at the section label "Job Detail N: <url>" or find the URL in the text)
 - salary_range: Only if explicitly stated
 
-Rules:
-- Merge listing + detail page data for the same job into ONE entry — use the most complete version
-- Ignore navigation text, cookie banners, "About Us" content, and other non-job content
-- Do NOT invent data — only extract what is actually in the text
 ${schemaSection}
 === SCRAPED TEXT (chunk ${chunkIndex}) ===
 ${chunk}

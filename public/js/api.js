@@ -54,9 +54,11 @@ export const api = {
     const params = new URLSearchParams();
     if (filters.keyword) params.append('keyword', filters.keyword);
     if (filters.titleKeyword) params.append('titleKeyword', filters.titleKeyword);
+    if (filters.excludeTitleKeyword) params.append('excludeTitleKeyword', filters.excludeTitleKeyword);
     if (filters.companyId) params.append('companyId', filters.companyId);
     if (filters.status) params.append('status', filters.status);
     if (filters.jobType) params.append('jobType', filters.jobType);
+    if (filters.techOnly !== undefined) params.append('techOnly', filters.techOnly);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
     

@@ -29,6 +29,27 @@ const ATS_HOSTS = new Set([
   'workable.com',
 ]);
 
+const GENERIC_SUBDOMAINS = new Set([
+  'career',
+  'careers',
+  'job',
+  'jobs',
+  'work',
+  'apply',
+  'recruitment',
+  'recruiting',
+  'talent',
+  'portal',
+  'dashboard',
+  'app',
+  'boards',
+  'board',
+]);
+
+const COMMON_TLDS = new Set([
+  'com', 'co', 'org', 'net', 'edu', 'gov', 'ltd', 'ac', 'mil', 'net', 'int'
+]);
+
 export function companyNameFromUrl(url) {
   try {
     const parsed   = new URL(url);
@@ -44,18 +65,26 @@ export function companyNameFromUrl(url) {
       }
     }
 
-    // For all non-ATS domains, take the SLD (second-level domain).
-    // This is the part at index -2 (just before the TLD).
-    //
-    // Examples:
-    //   career.nextventures.io   → parts = ['career','nextventures','io']  → SLD = 'nextventures'
-    //   careers.shopify.com      → parts = ['careers','shopify','com']      → SLD = 'shopify'
-    //   stripe.com               → parts = ['stripe','com']                 → SLD = 'stripe'
-    //   www.amazon.jobs          → parts = ['amazon','jobs']                → SLD = 'amazon'
     const parts = hostname.split('.');
+    
+    // Determine SLD index while bypassing double TLDs (e.g. .com.bd, .co.uk)
+    let sldIndex = parts.length - 2;
+    if (sldIndex > 0 && COMMON_TLDS.has(parts[sldIndex].toLowerCase())) {
+      sldIndex--;
+    }
 
-    // Second-to-last part = SLD (always the company domain label)
-    const sld = parts[parts.length - 2] || parts[0];
+    let sld = parts[sldIndex] || parts[0];
+
+    // If sld itself is a generic subdomain (like "career" or "jobs"),
+    // check if we can fall back to another segment of the hostname.
+    if (GENERIC_SUBDOMAINS.has(sld.toLowerCase()) && parts.length > 2) {
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!GENERIC_SUBDOMAINS.has(parts[i].toLowerCase()) && !COMMON_TLDS.has(parts[i].toLowerCase())) {
+          sld = parts[i];
+          break;
+        }
+      }
+    }
 
     return toTitleCase(sld.replace(/[-_]/g, ' '));
   } catch {

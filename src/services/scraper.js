@@ -5,6 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { logger } from '../utils/logger.js';
 
+
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 // Safety guards
@@ -49,7 +50,7 @@ export async function closeBrowser() {
  * Render a URL with Playwright and return full HTML.
  * Includes advanced evasion parameters and fast scrolling for dynamic content.
  */
-async function renderPage(url, timeoutMs = 30000) {
+export async function renderPage(url, timeoutMs = 30000) {
   logger.verbose(`[Playwright] Preparing page context for URL: ${url}`);
   const browser = await getBrowser();
   const context = await browser.newContext({
@@ -150,11 +151,35 @@ async function renderPage(url, timeoutMs = 30000) {
       await new Promise(r => setTimeout(r, 100));
     }).catch(() => { /* ignore scrolling errors if page structure is unusual */ });
 
-    // Step 5 — Short settle for JS-rendered content (React, Vue, etc.)
-    logger.verbose(`[Playwright] Settling for 1.5s to let dynamic content render...`);
-    await page.waitForTimeout(1500);
+    // Step 5 — Short settle for JS-rendered content, extended if there are sub-frames/iframes or if it is a known job board
+    const isJobBoard = /dover\.com|lever\.co|greenhouse\.io|ashbyhq\.com|pinpointhq\.com|workable\.com|smartrecruiters\.com|bamboohr\.com|recruitee\.com/i.test(url);
+    const frameCount = page.frames().length;
+    const settleTime = (frameCount > 1 || isJobBoard) ? 5000 : 1500;
+    logger.verbose(`[Playwright] Settling for ${settleTime}ms to let dynamic content render (sub-frames: ${frameCount - 1}, job-board: ${isJobBoard})...`);
+    await page.waitForTimeout(settleTime);
 
-    const html = await page.content();
+    let html = await page.content();
+    
+    // Proactively capture all embedded iframe content to support embedded job board widgets (Dover, Ashby, Greenhouse, Lever, etc.)
+    try {
+      const frames = page.frames();
+      for (const frame of frames) {
+        if (frame === page.mainFrame()) continue;
+        const frameUrl = frame.url();
+        if (frameUrl && frameUrl !== 'about:blank') {
+          try {
+            const frameContent = await frame.content();
+            html += `\n\n<!-- Frame: ${frameUrl} -->\n\n` + frameContent;
+            logger.verbose(`[Playwright] Captured iframe content from: ${frameUrl} (${frameContent.length} chars)`);
+          } catch (frameErr) {
+            logger.verbose(`[Playwright] Non-fatal: Could not access frame content: ${frameErr.message}`);
+          }
+        }
+      }
+    } catch (e) {
+      logger.verbose(`[Playwright] Non-fatal: Error in frame loop: ${e.message}`);
+    }
+
     logger.verbose(`[Playwright] Extracted HTML content: ${html.length} characters`);
     return html;
   } finally {
@@ -189,17 +214,76 @@ function extractTextAndLinks(html, baseUrl) {
   let baseOrigin = '';
   try { baseOrigin = new URL(baseUrl).origin; } catch { /* skip */ }
 
-  // URL patterns that are clearly NOT job listings
-  const EXCLUDE_PATTERNS = [
-    /\/(login|signin|sign-in|signup|sign-up|register|auth)(\/|$|\?)/i,
-    /\/(about|team|culture|values|benefits|perks)(\/|$|\?)/i,
-    /\/(blog|news|press|media|events|podcast|webinar)(\/|$|\?)/i,
-    /\/(contact|support|help|faq|legal|privacy|terms|cookies)(\/|$|\?)/i,
-    /\/(product|pricing|solutions|customers|case-study)(\/|$|\?)/i,
-    /\/(linkedin|twitter|facebook|instagram|github|youtube)\.com/i,
-    /^mailto:|^tel:|^javascript:/i,
-    /\.(pdf|zip|doc|docx|xlsx|csv)(\?|$)/i,
-  ];
+  // Helper to determine if a URL/anchor combination should be excluded
+  function shouldExclude(urlStr, anchorText) {
+    // 1. Normalize anchor text
+    const normAnchor = anchorText.replace(/\s+/g, ' ').trim().toLowerCase();
+
+    // 2. Strict anchor keyword matching
+    const EXCLUDE_ANCHORS_LOCAL = [
+      'about us', 'about', 'services', 'service', 'technology', 'technologies', 'capabilities', 'capability',
+      'works', 'work', 'clients', 'client', 'blog', 'blogs', 'news', 'career', 'careers',
+      'faq', 'faqs', 'faq\'s', 'faq`s', 'contact', 'contact us', 'privacy policy', 'privacy',
+      'terms of use', 'terms of service', 'terms & conditions', 'terms', 'cookies', 'cookie', 'policy',
+      'solutions', 'solution', 'products', 'product', 'pricing', 'portfolio', 'partner', 'partners',
+      'testimonial', 'testimonials', 'home', 'our team', 'team', 'culture', 'values', 'benefits',
+      'perks', 'life at', 'join our team', 'join us', 'developers'
+    ];
+
+    if (normAnchor && EXCLUDE_ANCHORS_LOCAL.some(kw => normAnchor === kw || normAnchor.startsWith(kw + ' ') || normAnchor.endsWith(' ' + kw))) {
+      return true;
+    }
+
+    // 3. Path-level keyword matching with job-safety overrides
+    let pathname = '';
+    try {
+      pathname = new URL(urlStr).pathname.toLowerCase();
+    } catch {
+      return false; // Let general parser handle malformed URLs
+    }
+
+    // Obvious system/third-party/file paths
+    const SYSTEM_EXCLUDES = [
+      /\/(login|signin|sign-in|signup|sign-up|register|auth)(\/|$|\?)/i,
+      /\/(linkedin|twitter|facebook|instagram|github|youtube)\.com/i,
+      /\.(pdf|zip|doc|docx|xlsx|csv)(\?|$)/i,
+      /^mailto:|^tel:|^javascript:/i
+    ];
+    if (SYSTEM_EXCLUDES.some(p => p.test(urlStr))) {
+      return true;
+    }
+
+    // Keywords that indicate static company sections
+    const EXCLUDE_PATH_KEYWORDS = [
+      'about', 'service', 'services', 'technology', 'technologies', 'capabilities', 'capability',
+      'work', 'works', 'client', 'clients', 'blog', 'blogs', 'news', 'faq', 'faqs',
+      'contact', 'privacy', 'terms', 'cookie', 'cookies', 'policy', 'policies',
+      'solutions', 'solution', 'products', 'product', 'pricing', 'portfolio',
+      'partner', 'partners', 'testimonial', 'testimonials', 'team', 'culture',
+      'values', 'benefits', 'perks', 'gallery', 'insights', 'comparison', 'calculator',
+      'case-study', 'case-studies'
+    ];
+
+    // Job-related keywords that act as safe overrides (to keep actual job detail pages)
+    const JOB_INDICATORS = [
+      'job', 'jobs', 'career', 'careers', 'apply', 'vacancy', 'vacancies',
+      'position', 'positions', 'opening', 'openings', 'recruitment', 'hire'
+    ];
+
+    const pathSegments = pathname.split('/').filter(Boolean);
+    const hasExcludeKeyword = pathSegments.some(segment => 
+      EXCLUDE_PATH_KEYWORDS.some(kw => segment === kw || segment.includes(kw))
+    );
+    const hasJobIndicator = pathSegments.some(segment => 
+      JOB_INDICATORS.some(kw => segment === kw || segment.includes(kw))
+    );
+
+    if (hasExcludeKeyword && !hasJobIndicator) {
+      return true;
+    }
+
+    return false;
+  }
 
   const links = new Set();
   let rawLinkCount = 0;
@@ -213,8 +297,14 @@ function extractTextAndLinks(html, baseUrl) {
     const href = $(el).attr('href') || '';
     if (!href || href.startsWith('#')) return;
 
+    const anchorText = $(el).text();
+
     let abs;
-    try { abs = new URL(href, baseUrl).toString(); } catch {
+    try {
+      const urlObj = new URL(href, baseUrl);
+      urlObj.hash = ''; // Strip hash/anchor tags to avoid crawling the same page multiple times
+      abs = urlObj.toString();
+    } catch {
       parseErrorCount++;
       return;
     }
@@ -224,14 +314,16 @@ function extractTextAndLinks(html, baseUrl) {
       differentOriginCount++;
       return;
     }
-    // Skip excluded patterns
-    if (EXCLUDE_PATTERNS.some(p => p.test(abs))) {
-      excludedPatternCount++;
-      return;
-    }
+
     // Skip the exact base URL itself
     if (abs === baseUrl || abs === baseUrl + '/') {
       equalsBaseCount++;
+      return;
+    }
+
+    // Apply smart keyword and path exclusions
+    if (shouldExclude(abs, anchorText)) {
+      excludedPatternCount++;
       return;
     }
 
@@ -303,6 +395,65 @@ function appendToFile(filePath, label, text) {
 }
 
 /**
+ * Scan for iframe tags containing known third-party job board URLs
+ * (e.g. Dover, Lever, Greenhouse, Ashby, etc.) to crawl them directly.
+ */
+function extractEmbeddedJobBoards(html, baseUrl) {
+  const $ = cheerio.load(html);
+  const srcs = [];
+  const boardDomains = [
+    'dover.com',
+    'lever.co',
+    'greenhouse.io',
+    'ashbyhq.com',
+    'pinpointhq.com',
+    'workable.com',
+    'smartrecruiters.com',
+    'bamboohr.com',
+    'recruitee.com',
+    'jobs.cz'
+  ];
+
+  $('iframe').each((_, el) => {
+    const src = $(el).attr('src');
+    if (!src) return;
+    try {
+      const absUrl = new URL(src, baseUrl).toString();
+      const domain = new URL(absUrl).hostname.toLowerCase();
+      const isJobBoard = boardDomains.some(d => domain.includes(d)) ||
+                         absUrl.toLowerCase().includes('/job/') ||
+                         absUrl.toLowerCase().includes('/jobs/') ||
+                         absUrl.toLowerCase().includes('/career');
+      if (isJobBoard) {
+        srcs.push(absUrl);
+      }
+    } catch {
+      // ignore invalid URLs
+    }
+  });
+  return srcs;
+}
+
+/**
+ * Executes a list of asynchronous tasks concurrently, limited to `limit` active tasks.
+ */
+async function limitConcurrency(tasks, limit) {
+  const results = [];
+  const executing = new Set();
+  for (const task of tasks) {
+    const p = Promise.resolve().then(() => task());
+    results.push(p);
+    executing.add(p);
+    const clean = () => executing.delete(p);
+    p.then(clean, clean);
+    if (executing.size >= limit) {
+      await Promise.race(executing);
+    }
+  }
+  return Promise.all(results);
+}
+
+/**
  * ─────────────────────────────────────────────────────────────────
  * MAIN COMPANY CRAWLER
  * ─────────────────────────────────────────────────────────────────
@@ -348,6 +499,7 @@ export async function crawlCompany(company, urlsToSkip = [], oldHash = null) {
   let listingCount = 0;
   let detailCount  = 0;
   let listingTextCombined = '';
+  let firstPageHtml = '';
 
   // ── PHASE 1: Listing pages + pagination ─────────────────────
   logger.info('[Phase 1] Crawling listing pages...');
@@ -365,6 +517,9 @@ export async function crawlCompany(company, urlsToSkip = [], oldHash = null) {
     let html;
     try {
       html = await renderPage(url, timeoutMs);
+      if (listingCount === 1) {
+        firstPageHtml = html;
+      }
     } catch (err) {
       logger.warn(`  Failed: ${err.message}`);
       appendToFile(outFile, `Listing Page ${listingCount} (FAILED: ${url})`, `Error: ${err.message}`);
@@ -375,6 +530,15 @@ export async function crawlCompany(company, urlsToSkip = [], oldHash = null) {
     listingTextCombined += text + '\n';
     appendToFile(outFile, `Listing Page ${listingCount}: ${url}`, text);
     logger.info(`    → ${text.length} chars, ${links.length} links found`);
+
+    // Detect embedded job boards in iframes and queue them to crawl directly
+    const iframeSrcs = extractEmbeddedJobBoards(html, url);
+    for (const src of iframeSrcs) {
+      if (!visited.has(src) && !listingQ.includes(src)) {
+        logger.info(`    [+iframe board] ${src}`);
+        listingQ.push(src);
+      }
+    }
 
     // Sort discovered links into pagination vs job detail candidates
     for (const link of links) {
@@ -410,7 +574,8 @@ export async function crawlCompany(company, urlsToSkip = [], oldHash = null) {
       fileSizeKb: (fs.statSync(outFile).size / 1024).toFixed(1),
       listingHash,
       hashMatched: true,
-      detailLinks: [...detailLinks]
+      detailLinks: [...detailLinks],
+      extractedJobsLocally: []
     };
   }
 
@@ -421,30 +586,30 @@ export async function crawlCompany(company, urlsToSkip = [], oldHash = null) {
     .slice(0, MAX_DETAIL_LINKS);
 
   if (toVisit.length > 0) {
-    logger.info(`[Phase 2] Visiting ${toVisit.length} job detail pages (skipped ${detailLinks.size - toVisit.length} existing/ignored)...`);
+    const concurrency = parseInt(process.env.SCRAPER_CONCURRENCY) || 3;
+    logger.info(`[Phase 2] Visiting ${toVisit.length} job detail pages concurrently (limit: ${concurrency}, skipped ${detailLinks.size - toVisit.length} existing/ignored)...`);
 
-    for (let i = 0; i < toVisit.length; i++) {
-      const url = toVisit[i];
+    const tasks = toVisit.map((url, idx) => async () => {
+      const pageNum = idx + 1;
       if (visited.has(url)) {
-        continue;
+        return;
       }
       visited.add(url);
-      detailCount++;
 
-      logger.info(`  [Detail ${detailCount}/${toVisit.length}] ${url}`);
-
-      let html;
+      logger.info(`  [Detail ${pageNum}/${toVisit.length}] Starting: ${url}`);
+      
       try {
-        html = await renderPage(url, timeoutMs);
+        const html = await renderPage(url, timeoutMs);
+        const { text } = extractTextAndLinks(html, url);
+        appendToFile(outFile, `Job Detail ${pageNum}: ${url}`, text);
+        logger.info(`    → [Detail ${pageNum}/${toVisit.length}] Finished: ${url} (${text.length} chars)`);
+        detailCount++;
       } catch (err) {
-        logger.warn(`  Failed: ${err.message}`);
-        continue;
+        logger.warn(`  Failed [Detail ${pageNum}/${toVisit.length}] ${url}: ${err.message}`);
       }
+    });
 
-      const { text } = extractTextAndLinks(html, url);
-      appendToFile(outFile, `Job Detail ${detailCount}: ${url}`, text);
-      logger.info(`    → ${text.length} chars`);
-    }
+    await limitConcurrency(tasks, concurrency);
   } else {
     logger.info(`[Phase 2] 0 new job detail pages to visit.`);
   }

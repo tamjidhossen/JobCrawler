@@ -19,15 +19,15 @@ router.get('/', (req, res) => {
   }
 });
 
-// Update scheduler configuration (interval, start/pause)
+// Update scheduler configuration (interval, start/pause, gemini toggle)
 router.put('/', async (req, res) => {
-  const { interval_hours, is_running } = req.body;
-
-  try {
-    const parsedInterval = interval_hours !== undefined ? parseFloat(interval_hours) : null;
-    const parsedRunning = is_running !== undefined ? (is_running ? 1 : 0) : null;
-
-    queries.updateSchedulerConfig(parsedInterval, parsedRunning);
+    const { interval_hours, is_running } = req.body;
+  
+    try {
+      const parsedInterval = interval_hours !== undefined ? parseFloat(interval_hours) : null;
+      const parsedRunning = is_running !== undefined ? (is_running ? 1 : 0) : null;
+  
+      queries.updateSchedulerConfig(parsedInterval, parsedRunning);
 
     // Apply immediately to running scheduler
     if (parsedRunning !== null) {

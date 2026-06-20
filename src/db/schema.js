@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { logger } from '../utils/logger.js';
+import { companyNameFromUrl } from '../utils/company-name.js';
 
 const dbDir = path.resolve('data');
 if (!fs.existsSync(dbDir)) {
@@ -15,6 +16,7 @@ export const db = new Database(dbPath);
 
 // Enable WAL mode for performance
 db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
 export function initDatabase() {
   // 1. Companies Table
@@ -74,6 +76,7 @@ export function initDatabase() {
     )
   `);
 
+
   // 4. Scrape Logs Table
   db.exec(`
     CREATE TABLE IF NOT EXISTS scrape_logs (
@@ -106,6 +109,23 @@ export function initDatabase() {
       VALUES (1, 6.0, 1)
     `).run();
     logger.info('Seeded default scheduler configuration (6 hours, running).');
+  }
+
+  // Cleanup/Migrate incorrectly parsed company names (e.g. named "Career" or "Careers")
+  try {
+    const badCompanies = db.prepare("SELECT id, career_url, name FROM companies WHERE name IN ('Career', 'Careers')").all();
+    if (badCompanies.length > 0) {
+      logger.info(`Found ${badCompanies.length} companies with name "Career"/"Careers". Migrating to correct names...`);
+      for (const comp of badCompanies) {
+        const correctName = companyNameFromUrl(comp.career_url);
+        if (correctName && correctName !== 'Career' && correctName !== 'Careers') {
+          db.prepare('UPDATE companies SET name = ? WHERE id = ?').run(correctName, comp.id);
+          logger.info(`Migrated company ID ${comp.id}: "${comp.name}" -> "${correctName}"`);
+        }
+      }
+    }
+  } catch (err) {
+    logger.error('Failed to migrate company names', { error: err.message });
   }
 
   logger.info('Database tables initialized and indexed successfully.');

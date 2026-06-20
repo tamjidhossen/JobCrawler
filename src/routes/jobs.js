@@ -9,9 +9,11 @@ router.get('/', (req, res) => {
   try {
     const keyword = req.query.keyword || '';
     const titleKeyword = req.query.titleKeyword || '';
+    const excludeTitleKeyword = req.query.excludeTitleKeyword || '';
     const companyId = req.query.companyId ? parseInt(req.query.companyId) : null;
     const status = req.query.status || '';
     const jobType = req.query.jobType || '';
+    const techOnly = req.query.techOnly || '';
     const page = req.query.page ? parseInt(req.query.page) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit) : 25;
     const offset = (page - 1) * limit;
@@ -19,9 +21,11 @@ router.get('/', (req, res) => {
     const result = queries.getFilteredJobs({
       keyword,
       titleKeyword,
+      excludeTitleKeyword,
       companyId,
       status,
       jobType,
+      techOnly,
       limit,
       offset
     });

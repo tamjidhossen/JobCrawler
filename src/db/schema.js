@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { logger } from '../utils/logger.js';
 import { companyNameFromUrl } from '../utils/company-name.js';
+import { getCountryFromLocation } from '../utils/location.js';
 
 const dbDir = path.resolve('data');
 if (!fs.existsSync(dbDir)) {
@@ -50,6 +51,7 @@ export function initDatabase() {
       title TEXT NOT NULL,
       description TEXT,
       location TEXT,
+      country TEXT,
       department TEXT,
       job_type TEXT,                         -- Full-time, Part-time, Contract, Internship, etc.
       job_url TEXT,
@@ -63,6 +65,14 @@ export function initDatabase() {
       FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
     )
   `);
+
+  // Add country column to existing DB if missing
+  try {
+    db.exec(`ALTER TABLE jobs ADD COLUMN country TEXT`);
+    logger.info('Added country column to jobs table.');
+  } catch (err) {
+    // Ignore error if column already exists
+  }
 
   // 3. Scheduler Config Table
   db.exec(`
@@ -126,6 +136,24 @@ export function initDatabase() {
     }
   } catch (err) {
     logger.error('Failed to migrate company names', { error: err.message });
+  }
+
+  // Migrate existing jobs without country
+  try {
+    const jobsWithoutCountry = db.prepare('SELECT id, location FROM jobs WHERE country IS NULL').all();
+    if (jobsWithoutCountry.length > 0) {
+      logger.info(`Found ${jobsWithoutCountry.length} jobs without country. Migrating country names...`);
+      const updateStmt = db.prepare('UPDATE jobs SET country = ? WHERE id = ?');
+      db.transaction((jobs) => {
+        for (const job of jobs) {
+          const country = getCountryFromLocation(job.location);
+          updateStmt.run(country, job.id);
+        }
+      })(jobsWithoutCountry);
+      logger.info('Successfully completed country migration for all existing jobs.');
+    }
+  } catch (err) {
+    logger.error('Failed to migrate country for existing jobs', { error: err.message });
   }
 
   logger.info('Database tables initialized and indexed successfully.');

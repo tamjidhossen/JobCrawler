@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Job Tracker — Career Monitor Dashboard</title>
+  <title>JobCrawler — Career Monitor Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjI0IiBmaWxsPSIjMjIyMDFlIi8+PHBhdGggZD0iTTMwIDQyaDQwdjM4SDMweiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjY2M3MDUyIiBzdHJva2Utd2lkdGg9IjgiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48cGF0aCBkPSJNNDIgNDJWMzJjMC00LjQgMy42LTggOC04czggMy42IDggOHYxMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjY2M3MDUyIiBzdHJva2Utd2lkdGg9IjgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxjaXJjbGUgY3g9IjUwIiBjeT0iNTgiIHI9IjYiIGZpbGw9IiNmNGYwZWMiLz48L3N2Zz4=">
   <!-- Google Fonts: Lora (serif) & Inter (sans) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -535,7 +536,7 @@
     <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-claude-border">
       <div class="flex items-center gap-3">
         <svg class="w-6 h-6 text-claude-accent" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-        <h1 class="font-serif text-xl font-semibold">Job Tracker</h1>
+        <h1 class="font-serif text-xl font-semibold">JobCrawler</h1>
         <span class="badge badge-accent">AI Powered</span>
       </div>
       
@@ -604,9 +605,9 @@
                 <input type="text" id="exclude-title-keyword" placeholder="e.g. Senior, Lead" autocomplete="off" class="bg-claude-bg border border-claude-border text-claude-text rounded-lg px-3 py-1.5 text-xs outline-none focus:border-claude-accent w-full">
               </div>
               <div class="flex flex-col gap-1.5 min-w-0">
-                <label for="filter-company" class="text-[10px] uppercase tracking-wider font-semibold text-claude-muted">Company</label>
-                <select id="filter-company" class="custom-select">
-                  <option value="">All Companies</option>
+                <label for="filter-location" class="text-[10px] uppercase tracking-wider font-semibold text-claude-muted">Location</label>
+                <select id="filter-location" class="custom-select" multiple>
+                  <!-- Dynamically populated -->
                 </select>
               </div>
             </div>
@@ -646,7 +647,13 @@
           <!-- Jobs List Card -->
           <div class="bg-claude-card border border-claude-border rounded-lg p-5 shadow-sm">
             <div class="flex justify-between items-center pb-3 border-b border-claude-border mb-4">
-              <h2 class="font-serif text-base font-medium">Job Postings</h2>
+              <div class="flex items-center gap-3">
+                <h2 class="font-serif text-base font-medium">Job Postings</h2>
+                <button id="btn-telegram-preview" class="btn btn-secondary btn-sm flex items-center gap-1.5" title="Send filtered jobs to Telegram">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                  <span>Send to Telegram</span>
+                </button>
+              </div>
               <div class="text-xs text-claude-muted" id="jobs-count-summary">Showing 0 jobs</div>
             </div>
             
@@ -808,6 +815,35 @@
         </form>
       </div>
     </div>
+
+    <!-- Telegram Broadcast Modal -->
+    <div id="telegram-modal" class="modal" style="display: none;">
+      <div class="modal-content max-w-lg">
+        <div class="modal-header">
+          <h2 class="font-serif text-base font-medium">Telegram Broadcast Preview</h2>
+          <button id="telegram-modal-close" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="text-xs text-claude-muted mb-2">
+            Below is a preview of the message that will be sent to the Telegram group chat. You can edit this directly before sending.
+          </p>
+          <div class="flex flex-col gap-1.5">
+            <label for="telegram-message-text" class="text-[10px] uppercase tracking-wider font-semibold text-claude-muted">Message Content (HTML tags supported)</label>
+            <textarea id="telegram-message-text" rows="12" class="w-full bg-claude-bg border border-claude-border text-claude-text rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-claude-accent resize-y"></textarea>
+          </div>
+          <div id="telegram-char-warning" class="text-xs text-claude-accent font-medium mt-1 hidden">
+            ⚠️ Note: Message exceeds 4000 characters and will automatically be sent in multiple sequential messages.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-telegram" class="btn btn-secondary px-4 py-1.5 text-xs">Cancel</button>
+          <button type="button" id="btn-send-telegram" class="btn btn-primary px-4 py-1.5 text-xs flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            <span>Send Broadcast</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/js/api.js" type="module"></script>
@@ -821,6 +857,8 @@
     });
 
     function makeShadcnSelect(selectEl) {
+      const isMultiple = selectEl.multiple;
+
       // Hide the native select
       selectEl.style.display = 'none';
 
@@ -845,7 +883,7 @@
       wrapper.appendChild(trigger);
 
       const popover = document.createElement('div');
-      popover.className = 'absolute z-50 mt-1 max-h-60 min-w-full w-max max-w-[250px] overflow-x-hidden overflow-y-auto rounded-md border border-claude-border bg-claude-card p-1 text-xs text-claude-text shadow-lg focus:outline-none hidden custom-select-popover';
+      popover.className = 'absolute z-50 mt-1 max-h-60 min-w-full w-max max-w-[450px] overflow-x-hidden overflow-y-auto rounded-md border border-claude-border bg-claude-card p-1 text-xs text-claude-text shadow-lg focus:outline-none hidden custom-select-popover';
       wrapper.appendChild(popover);
 
       // Move select inside the wrapper
@@ -876,38 +914,76 @@
           item.appendChild(checkmark);
 
           // Hide checkmark if not selected
-          if (selectEl.value !== opt.value) {
+          const isSelected = isMultiple ? opt.selected : (selectEl.value === opt.value);
+          if (!isSelected) {
             checkmark.style.display = 'none';
-          } else {
-            valueSpan.textContent = opt.textContent;
           }
 
           item.addEventListener('click', (e) => {
             e.stopPropagation();
-            selectEl.value = opt.value;
-            // Dispatch change event to trigger filters in app.js
-            selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-            updateUI();
-            popover.classList.add('hidden');
+            if (isMultiple) {
+              if (opt.value === '') {
+                // Clicking "All" deselects everything else
+                Array.from(selectEl.options).forEach(o => {
+                  o.selected = (o.value === '');
+                });
+              } else {
+                opt.selected = !opt.selected;
+                // Deselect "All" option if it exists
+                const allOpt = Array.from(selectEl.options).find(o => o.value === '');
+                if (allOpt) allOpt.selected = false;
+                
+                // If no other options are selected now, select "All" option
+                const hasSelection = Array.from(selectEl.options).some(o => o.selected && o.value !== '');
+                if (!hasSelection && allOpt) {
+                  allOpt.selected = true;
+                }
+              }
+              selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+              updateUI();
+            } else {
+              selectEl.value = opt.value;
+              selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+              updateUI();
+              popover.classList.add('hidden');
+            }
           });
 
           popover.appendChild(item);
         });
         
-        if (options.length === 0) {
-          valueSpan.textContent = 'Select...';
+        updateTriggerText();
+      }
+
+      function updateTriggerText() {
+        if (isMultiple) {
+          const selectedOpts = Array.from(selectEl.options).filter(o => o.selected && o.value);
+          const allOpt = Array.from(selectEl.options).find(o => o.value === '');
+          if (selectedOpts.length === 0) {
+            if (allOpt) allOpt.selected = true;
+            valueSpan.textContent = allOpt ? allOpt.textContent : 'All Locations';
+          } else if (selectedOpts.length <= 2) {
+            valueSpan.textContent = selectedOpts.map(o => o.textContent).join(', ');
+          } else {
+            valueSpan.textContent = `${selectedOpts.length} Selected`;
+          }
+        } else {
+          const selectedOpt = selectEl.options[selectEl.selectedIndex];
+          valueSpan.textContent = selectedOpt ? selectedOpt.textContent : 'Select...';
         }
       }
 
       // Function to update visual selection states
       function updateUI() {
-        const selectedOpt = selectEl.options[selectEl.selectedIndex];
-        valueSpan.textContent = selectedOpt ? selectedOpt.textContent : 'Select...';
+        updateTriggerText();
         
         Array.from(popover.children).forEach(item => {
           const checkmark = item.querySelector('.checkmark-icon');
           if (checkmark) {
-            checkmark.style.display = item.dataset.value === selectEl.value ? 'flex' : 'none';
+            const optValue = item.dataset.value;
+            const opt = Array.from(selectEl.options).find(o => o.value === optValue);
+            const isSelected = opt ? (isMultiple ? opt.selected : selectEl.value === optValue) : false;
+            checkmark.style.display = isSelected ? 'flex' : 'none';
           }
         });
       }

@@ -10,7 +10,7 @@ const state = {
     keyword: '',
     titleKeyword: '',
     excludeTitleKeyword: '',
-    companyId: '',
+    locations: '',
     status: 'new', // Default filter to 'new' postings as requested by flow
     jobType: '',
     techOnly: '',
@@ -45,7 +45,7 @@ const els = {
   searchInput: document.getElementById('search-input'),
   filterTitleKeyword: document.getElementById('filter-title-keyword'),
   excludeTitleKeyword: document.getElementById('exclude-title-keyword'),
-  filterCompany: document.getElementById('filter-company'),
+  filterLocation: document.getElementById('filter-location'),
   filterStatus: document.getElementById('filter-status'),
   filterType: document.getElementById('filter-type'),
   filterTechOnly: document.getElementById('filter-tech-only'),
@@ -97,6 +97,15 @@ const els = {
   editCompanyUrl: document.getElementById('edit-company-url'),
   editCompanyStatus: document.getElementById('edit-company-status'),
   btnCancelEditCompany: document.getElementById('btn-cancel-edit-company'),
+
+  // Telegram Broadcast Modal
+  btnTelegramPreview: document.getElementById('btn-telegram-preview'),
+  telegramModal: document.getElementById('telegram-modal'),
+  telegramModalClose: document.getElementById('telegram-modal-close'),
+  telegramMessageText: document.getElementById('telegram-message-text'),
+  telegramCharWarning: document.getElementById('telegram-char-warning'),
+  btnCancelTelegram: document.getElementById('btn-cancel-telegram'),
+  btnSendTelegram: document.getElementById('btn-send-telegram'),
 
   // Toast Container
   toastContainer: document.getElementById('toast-container')
@@ -199,21 +208,41 @@ async function loadCompanies() {
     const companies = await api.getCompanies();
     state.companies = companies;
 
-    // Populate Company Filter Dropdown
-    const currentVal = els.filterCompany.value;
-    els.filterCompany.innerHTML = '<option value="">All Companies</option>';
-    companies.forEach(company => {
-      const option = document.createElement('option');
-      option.value = company.id;
-      option.innerText = company.name;
-      els.filterCompany.appendChild(option);
-    });
-    els.filterCompany.value = currentVal;
-
     // Populate Side Column Companies List
     renderCompaniesList();
   } catch (err) {
     loggerError('Error loading companies', err);
+  }
+}
+
+async function loadLocations() {
+  try {
+    const locations = await api.getLocations();
+    
+    // Save current selection to restore
+    const selectedLocations = Array.from(els.filterLocation.options)
+      .filter(o => o.selected && o.value)
+      .map(o => o.value);
+
+    els.filterLocation.innerHTML = '<option value="">All Locations</option>';
+    locations.forEach(loc => {
+      const option = document.createElement('option');
+      option.value = loc;
+      option.innerText = loc;
+      els.filterLocation.appendChild(option);
+    });
+
+    // Restore selection from DOM or from state
+    const saved = selectedLocations.length > 0 ? selectedLocations : (state.filters.locations || '').split(',').filter(Boolean);
+    if (saved.length > 0) {
+      Array.from(els.filterLocation.options).forEach(o => {
+        o.selected = saved.includes(o.value);
+      });
+      // trigger selectEl change manually to update the UI trigger text
+      els.filterLocation.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  } catch (err) {
+    loggerError('Error loading locations', err);
   }
 }
 
@@ -536,27 +565,35 @@ els.btnScrapeAll.addEventListener('click', async () => {
 });
 
 // Filter Handlers
-els.filterCompany.addEventListener('change', () => {
-  state.filters.companyId = els.filterCompany.value;
+els.filterLocation.addEventListener('change', () => {
+  const selectedLocations = Array.from(els.filterLocation.options)
+    .filter(o => o.selected && o.value)
+    .map(o => o.value)
+    .join(',');
+  state.filters.locations = selectedLocations;
   state.filters.page = 1;
+  saveFilters();
   loadJobs();
 });
 
 els.filterStatus.addEventListener('change', () => {
   state.filters.status = els.filterStatus.value;
   state.filters.page = 1;
+  saveFilters();
   loadJobs();
 });
 
 els.filterType.addEventListener('change', () => {
   state.filters.jobType = els.filterType.value;
   state.filters.page = 1;
+  saveFilters();
   loadJobs();
 });
 
 els.filterTechOnly.addEventListener('change', () => {
   state.filters.techOnly = els.filterTechOnly.value;
   state.filters.page = 1;
+  saveFilters();
   loadJobs();
 });
 
@@ -566,6 +603,7 @@ els.searchInput.addEventListener('input', () => {
   state.searchDebounceTimer = setTimeout(() => {
     state.filters.keyword = els.searchInput.value.trim();
     state.filters.page = 1;
+    saveFilters();
     loadJobs();
   }, 300);
 });
@@ -576,6 +614,7 @@ els.filterTitleKeyword.addEventListener('input', () => {
   state.searchDebounceTimer = setTimeout(() => {
     state.filters.titleKeyword = els.filterTitleKeyword.value.trim();
     state.filters.page = 1;
+    saveFilters();
     loadJobs();
   }, 300);
 });
@@ -586,6 +625,7 @@ els.excludeTitleKeyword.addEventListener('input', () => {
   state.searchDebounceTimer = setTimeout(() => {
     state.filters.excludeTitleKeyword = els.excludeTitleKeyword.value.trim();
     state.filters.page = 1;
+    saveFilters();
     loadJobs();
   }, 300);
 });
@@ -595,7 +635,12 @@ els.btnClearFilters.addEventListener('click', () => {
   els.searchInput.value = '';
   els.filterTitleKeyword.value = '';
   els.excludeTitleKeyword.value = '';
-  els.filterCompany.value = '';
+  
+  if (els.filterLocation) {
+    Array.from(els.filterLocation.options).forEach(o => o.selected = false);
+    els.filterLocation.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
   els.filterStatus.value = ''; // Let's keep status empty (All Statuses) on clear
   els.filterType.value = '';
   els.filterTechOnly.value = '';
@@ -603,12 +648,13 @@ els.btnClearFilters.addEventListener('click', () => {
   state.filters.keyword = '';
   state.filters.titleKeyword = '';
   state.filters.excludeTitleKeyword = '';
-  state.filters.companyId = '';
+  state.filters.locations = '';
   state.filters.status = '';
   state.filters.jobType = '';
   state.filters.techOnly = '';
   state.filters.page = 1;
   
+  saveFilters();
   loadJobs();
 });
 
@@ -616,6 +662,7 @@ els.btnClearFilters.addEventListener('click', () => {
 els.btnPrevPage.addEventListener('click', () => {
   if (state.filters.page > 1) {
     state.filters.page--;
+    saveFilters();
     loadJobs();
   }
 });
@@ -623,6 +670,7 @@ els.btnPrevPage.addEventListener('click', () => {
 els.btnNextPage.addEventListener('click', () => {
   if (state.filters.page < state.pagination.pages) {
     state.filters.page++;
+    saveFilters();
     loadJobs();
   }
 });
@@ -684,6 +732,85 @@ els.editCompanyForm.addEventListener('submit', async (e) => {
 });
 
 // ==========================================
+// TELEGRAM BROADCAST LOGIC
+// ==========================================
+function updateTelegramWarning(text) {
+  if (text.length > 4000) {
+    els.telegramCharWarning.classList.remove('hidden');
+  } else {
+    els.telegramCharWarning.classList.add('hidden');
+  }
+}
+
+async function openTelegramModal() {
+  const span = els.btnTelegramPreview.querySelector('span');
+  const originalText = span ? span.innerText : 'Send to Telegram';
+  els.btnTelegramPreview.disabled = true;
+  if (span) span.innerText = 'Preparing...';
+
+  try {
+    const data = await api.getTelegramPreview(state.filters);
+    if (!data.text || data.count === 0) {
+      showToast('No jobs found matching the selected filters to send.', 'info');
+      return;
+    }
+
+    els.telegramMessageText.value = data.text;
+    updateTelegramWarning(data.text);
+    els.telegramModal.style.display = 'flex';
+  } catch (err) {
+    loggerError('Error loading Telegram preview', err);
+  } finally {
+    els.btnTelegramPreview.disabled = false;
+    if (span) span.innerText = originalText;
+  }
+}
+
+function closeTelegramModal() {
+  els.telegramModal.style.display = 'none';
+  els.telegramMessageText.value = '';
+}
+
+// Telegram Listeners
+els.btnTelegramPreview.addEventListener('click', openTelegramModal);
+els.telegramModalClose.addEventListener('click', closeTelegramModal);
+els.btnCancelTelegram.addEventListener('click', closeTelegramModal);
+
+window.addEventListener('click', (e) => {
+  if (e.target === els.telegramModal) {
+    closeTelegramModal();
+  }
+});
+
+els.telegramMessageText.addEventListener('input', () => {
+  updateTelegramWarning(els.telegramMessageText.value);
+});
+
+els.btnSendTelegram.addEventListener('click', async () => {
+  const text = els.telegramMessageText.value.trim();
+  if (!text) {
+    showToast('Cannot send an empty broadcast.', 'error');
+    return;
+  }
+
+  els.btnSendTelegram.disabled = true;
+  const span = els.btnSendTelegram.querySelector('span');
+  const originalText = span ? span.innerText : 'Send Broadcast';
+  if (span) span.innerText = 'Sending...';
+
+  try {
+    const res = await api.sendTelegramMessage(text);
+    showToast(res.message, 'success');
+    closeTelegramModal();
+  } catch (err) {
+    loggerError('Failed to send broadcast', err);
+  } finally {
+    els.btnSendTelegram.disabled = false;
+    if (span) span.innerText = originalText;
+  }
+});
+
+// ==========================================
 // SYSTEM UTILITIES
 // ==========================================
 function loggerError(msg, err) {
@@ -691,10 +818,49 @@ function loggerError(msg, err) {
   showToast(`${msg}: ${err.message}`, 'error');
 }
 
+function saveFilters() {
+  try {
+    localStorage.setItem('job_tracker_filters', JSON.stringify(state.filters));
+  } catch (err) {
+    console.error('Error saving filters:', err);
+  }
+}
+
+function loadSavedFilters() {
+  try {
+    const saved = localStorage.getItem('job_tracker_filters');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Merge saved filters into state.filters
+      state.filters = { ...state.filters, ...parsed };
+      
+      // Update DOM values
+      if (els.searchInput) els.searchInput.value = state.filters.keyword || '';
+      if (els.filterTitleKeyword) els.filterTitleKeyword.value = state.filters.titleKeyword || '';
+      if (els.excludeTitleKeyword) els.excludeTitleKeyword.value = state.filters.excludeTitleKeyword || '';
+      
+      if (els.filterLocation && state.filters.locations) {
+        const savedLocations = state.filters.locations.split(',').filter(Boolean);
+        Array.from(els.filterLocation.options).forEach(o => {
+          o.selected = savedLocations.includes(o.value);
+        });
+        els.filterLocation.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+
+      if (els.filterStatus) els.filterStatus.value = state.filters.status || '';
+      if (els.filterType) els.filterType.value = state.filters.jobType || '';
+      if (els.filterTechOnly) els.filterTechOnly.value = state.filters.techOnly || '';
+    }
+  } catch (err) {
+    console.error('Error loading saved filters:', err);
+  }
+}
+
 async function refreshAllData() {
   await Promise.all([
     loadStats(),
     loadCompanies(),
+    loadLocations(),
     loadJobs(),
     loadSchedulerStatus()
   ]);
@@ -702,6 +868,7 @@ async function refreshAllData() {
 
 // Initializer
 async function init() {
+  loadSavedFilters();
   await refreshAllData();
   
   // Set up polling for status updates every 6 seconds to keep dashboard fresh

@@ -1,4 +1,5 @@
 import { db } from './schema.js';
+import { getCountryFromLocation } from '../utils/location.js';
 
 // ==========================================
 // COMPANIES QUERIES
@@ -77,7 +78,7 @@ export const updateCompanyListingHash = (id, hash) => {
 // JOBS QUERIES
 // ==========================================
 
-export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, companyId, status, jobType, techOnly, limit = 25, offset = 0 }) => {
+export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, locations, status, jobType, techOnly, limit = 25, offset = 0 }) => {
   let query = `
     SELECT j.*, c.name as company_name 
     FROM jobs j
@@ -129,9 +130,13 @@ export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, co
     });
   }
 
-  if (companyId) {
-    query += ` AND j.company_id = ?`;
-    params.push(companyId);
+  if (locations) {
+    const list = locations.split(',').map(l => l.trim()).filter(Boolean);
+    if (list.length > 0) {
+      const placeholders = list.map(() => '?').join(',');
+      query += ` AND j.location IN (${placeholders})`;
+      params.push(...list);
+    }
   }
 
   if (status) {
@@ -149,8 +154,12 @@ export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, co
   const totalCount = db.prepare(countQuery).get(...params).total;
 
   // Order and Paginate
-  query += ` ORDER BY j.status = 'new' DESC, j.last_seen_at DESC, j.first_seen_at DESC LIMIT ? OFFSET ?`;
-  params.push(limit, offset);
+  if (limit === null) {
+    query += ` ORDER BY j.status = 'new' DESC, j.last_seen_at DESC, j.first_seen_at DESC`;
+  } else {
+    query += ` ORDER BY j.status = 'new' DESC, j.last_seen_at DESC, j.first_seen_at DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+  }
 
   const jobs = db.prepare(query).all(...params);
 
@@ -179,7 +188,16 @@ export const getActiveJobFingerprints = (companyId) => {
   `).all(companyId).map(row => row.fingerprint);
 };
 
+export const getUniqueLocations = () => {
+  const rows = db.prepare(`
+    SELECT DISTINCT location FROM jobs 
+    WHERE location IS NOT NULL AND location != '' AND status != 'removed'
+  `).all();
+  return rows.map(row => row.location).sort();
+};
+
 export const upsertJob = (job) => {
+  const country = getCountryFromLocation(job.location);
   // Try to find existing job by fingerprint
   const existing = db.prepare('SELECT id, status FROM jobs WHERE fingerprint = ?').get(job.fingerprint);
 
@@ -192,6 +210,7 @@ export const upsertJob = (job) => {
           status = ?,
           description = COALESCE(?, description),
           location = COALESCE(?, location),
+          country = COALESCE(?, country),
           department = COALESCE(?, department),
           job_type = COALESCE(?, job_type),
           job_url = COALESCE(?, job_url),
@@ -202,6 +221,7 @@ export const upsertJob = (job) => {
       newStatus,
       job.description,
       job.location,
+      country,
       job.department,
       job.job_type,
       job.job_url,
@@ -213,14 +233,15 @@ export const upsertJob = (job) => {
     // Insert new job
     const info = db.prepare(`
       INSERT INTO jobs (
-        company_id, title, description, location, department, 
+        company_id, title, description, location, country, department, 
         job_type, job_url, salary_range, fingerprint, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')
     `).run(
       job.company_id,
       job.title,
       job.description,
       job.location,
+      country,
       job.department,
       job.job_type,
       job.job_url,

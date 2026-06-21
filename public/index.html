@@ -591,7 +591,7 @@
           <div class="bg-claude-card border border-claude-border rounded-lg p-5 shadow-sm flex flex-col gap-4">
             <div class="flex items-center bg-claude-bg border border-claude-border rounded-lg px-3 py-1.5 gap-2 focus-within:border-claude-accent transition-colors">
               <svg class="w-4 h-4 text-claude-muted" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              <input type="text" id="search-input" placeholder="Search by title, location, keywords..." autocomplete="off" class="bg-transparent border-none text-xs md:text-sm text-claude-text outline-none w-full py-0.5">
+              <input type="text" id="search-input" placeholder="Search by title, company, location, or keywords..." autocomplete="off" class="bg-transparent border-none text-xs md:text-sm text-claude-text outline-none w-full py-0.5">
             </div>
             
             <!-- Row 1 of filters -->
@@ -725,6 +725,22 @@
           <div class="bg-claude-card border border-claude-border rounded-lg p-5 shadow-sm">
             <h3 class="font-serif text-base font-medium pb-2 border-b border-claude-border mb-4">Tracked Companies</h3>
             <div class="companies-list" id="companies-list-container">
+              <div class="loading-state">
+                <div class="spinner"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Scrape Logs -->
+          <div class="bg-claude-card border border-claude-border rounded-lg p-5 shadow-sm">
+            <div class="flex justify-between items-center pb-2 border-b border-claude-border mb-4">
+              <h3 class="font-serif text-base font-medium">Scrape Logs</h3>
+              <button id="btn-refresh-logs" class="text-[10px] uppercase tracking-wider font-semibold text-claude-accent hover:text-claude-accent-hover flex items-center gap-1">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                Refresh
+              </button>
+            </div>
+            <div class="max-h-[350px] overflow-y-auto pr-1 text-xs flex flex-col gap-3" id="logs-container">
               <div class="loading-state">
                 <div class="spinner"></div>
               </div>

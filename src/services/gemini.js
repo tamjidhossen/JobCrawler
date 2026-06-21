@@ -415,7 +415,10 @@ export async function batchExtractJobs(companyName, careerUrl, cacheFilePath) {
   }
 
   logger.info(`[Gemini] ${companyName}: total ${allJobs.length} unique jobs across ${chunkIndex} chunk(s)`);
-  return allJobs;
+  return {
+    jobs: allJobs,
+    apiCalls: chunkIndex
+  };
 }
 
 function buildPrompt(companyName, careerUrl, chunk, chunkIndex, includeSchemaHint) {

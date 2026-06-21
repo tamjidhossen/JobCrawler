@@ -1,11 +1,21 @@
 import { db } from './schema.js';
 import { getCountryFromLocation } from '../utils/location.js';
 
+export const demoteOldNewJobs = () => {
+  db.prepare(`
+    UPDATE jobs
+    SET status = 'active'
+    WHERE status = 'new'
+      AND first_seen_at < datetime('now', '-24 hours')
+  `).run();
+};
+
 // ==========================================
 // COMPANIES QUERIES
 // ==========================================
 
 export const getCompanies = () => {
+  demoteOldNewJobs();
   return db.prepare(`
     SELECT c.*, 
       (SELECT COUNT(*) FROM jobs j WHERE j.company_id = c.id AND j.status = 'active') as active_jobs_count,
@@ -79,6 +89,7 @@ export const updateCompanyListingHash = (id, hash) => {
 // ==========================================
 
 export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, locations, status, jobType, techOnly, limit = 25, offset = 0 }) => {
+  demoteOldNewJobs();
   let query = `
     SELECT j.*, c.name as company_name 
     FROM jobs j
@@ -172,6 +183,7 @@ export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, lo
 };
 
 export const getJobStats = () => {
+  demoteOldNewJobs();
   return db.prepare(`
     SELECT 
       (SELECT COUNT(*) FROM jobs WHERE status = 'new') as new_count,
@@ -343,8 +355,8 @@ export const updateSchedulerRunTimes = (lastRunAt, nextRunAt) => {
 export const insertScrapeLog = (log) => {
   return db.prepare(`
     INSERT INTO scrape_logs (
-      company_id, status, jobs_found, new_jobs, removed_jobs, error_message, duration_ms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      company_id, status, jobs_found, new_jobs, removed_jobs, error_message, duration_ms, gemini_calls
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     log.company_id,
     log.status,
@@ -352,7 +364,8 @@ export const insertScrapeLog = (log) => {
     log.new_jobs || 0,
     log.removed_jobs || 0,
     log.error_message || null,
-    log.duration_ms || 0
+    log.duration_ms || 0,
+    log.gemini_calls || 0
   );
 };
 

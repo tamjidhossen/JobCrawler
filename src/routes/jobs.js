@@ -1,7 +1,6 @@
 import express from 'express';
 import * as queries from '../db/queries.js';
 import { logger } from '../utils/logger.js';
-import fetch from 'node-fetch';
 
 const router = express.Router();
 
@@ -147,6 +146,40 @@ router.post('/telegram-preview', (req, res) => {
   }
 });
 
+// Helper for resilient fetch requests with retry logic and detailed error parsing
+async function fetchWithRetry(url, options = {}, retries = 3, backoffMs = 1000) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      return response;
+    } catch (err) {
+      const isLastAttempt = attempt === retries;
+      let errMsg = err.message;
+      
+      if (err.cause) {
+        if (err.cause.name === 'AggregateError' && Array.isArray(err.cause.errors)) {
+          errMsg = `${err.message} (Cause: AggregateError: [${err.cause.errors.map(e => e.message).join(', ')}])`;
+        } else {
+          errMsg = `${err.message} (Cause: ${err.cause.message || err.cause})`;
+        }
+      } else if (err.name === 'AggregateError' && Array.isArray(err.errors)) {
+        errMsg = `AggregateError: [${err.errors.map(e => e.message).join(', ')}]`;
+      }
+
+      logger.warn(`Fetch attempt ${attempt} failed. Url: ${url}. Error: ${errMsg}`);
+      
+      if (isLastAttempt) {
+        const finalErr = new Error(errMsg);
+        finalErr.originalError = err;
+        throw finalErr;
+      }
+      
+      // Exponential backoff
+      await new Promise(resolve => setTimeout(resolve, backoffMs * Math.pow(2, attempt - 1)));
+    }
+  }
+}
+
 // Send message to Telegram group
 router.post('/telegram-send', async (req, res) => {
   const { text } = req.body;
@@ -184,7 +217,7 @@ router.post('/telegram-send', async (req, res) => {
 
     for (const chunk of chunks) {
       const telegramUrl = `https://api.telegram.org/bot${token}/sendMessage`;
-      const response = await fetch(telegramUrl, {
+      const response = await fetchWithRetry(telegramUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

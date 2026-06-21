@@ -98,10 +98,18 @@ export function initDatabase() {
       removed_jobs INTEGER DEFAULT 0,
       error_message TEXT,
       duration_ms INTEGER,
+      gemini_calls INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
     )
   `);
+
+  // Add gemini_calls column to scrape_logs if missing
+  try {
+    db.exec(`ALTER TABLE scrape_logs ADD COLUMN gemini_calls INTEGER DEFAULT 0`);
+  } catch (err) {
+    // Ignore error if column already exists
+  }
 
   // Create indexes
   db.exec(`

@@ -24,7 +24,8 @@ const state = {
     pages: 1
   },
   selectedJob: null,
-  searchDebounceTimer: null
+  searchDebounceTimer: null,
+  logs: []
 };
 
 // DOM Elements
@@ -108,7 +109,11 @@ const els = {
   btnSendTelegram: document.getElementById('btn-send-telegram'),
 
   // Toast Container
-  toastContainer: document.getElementById('toast-container')
+  toastContainer: document.getElementById('toast-container'),
+
+  // Logs
+  logsContainer: document.getElementById('logs-container'),
+  btnRefreshLogs: document.getElementById('btn-refresh-logs')
 };
 
 // ==========================================
@@ -187,6 +192,59 @@ async function loadSchedulerStatus() {
   } catch (err) {
     loggerError('Error loading scheduler config', err);
   }
+}
+
+async function loadLogs() {
+  if (!els.logsContainer) return;
+  try {
+    const logs = await api.getSchedulerLogs(20);
+    state.logs = logs;
+    renderLogsList();
+  } catch (err) {
+    loggerError('Error loading logs', err);
+    els.logsContainer.innerHTML = '<div class="text-danger p-3 text-center">Failed to load logs.</div>';
+  }
+}
+
+function renderLogsList() {
+  const container = els.logsContainer;
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (state.logs.length === 0) {
+    container.innerHTML = '<div class="empty-state">No scrape logs available.</div>';
+    return;
+  }
+
+  state.logs.forEach(log => {
+    const item = document.createElement('div');
+    item.className = 'border-b border-claude-border last:border-b-0 pb-3 last:pb-0 flex flex-col gap-1';
+    
+    const timeText = log.created_at ? formatRelativeTime(log.created_at) : 'unknown';
+    const statusText = log.status === 'success' ? 'Success' : 'Failed';
+    const statusClass = log.status === 'success' ? 'text-success' : 'text-danger';
+
+    item.innerHTML = `
+      <div class="flex justify-between items-start">
+        <span class="font-semibold text-claude-text">${log.company_name}</span>
+        <span class="text-[10px] text-claude-muted">${timeText}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-claude-muted">
+        <div>Status: <span class="font-medium ${statusClass}">${statusText}</span></div>
+        <div>Duration: <span class="text-claude-text font-medium">${(log.duration_ms / 1000).toFixed(1)}s</span></div>
+        <div>Gemini Calls: <span class="text-claude-text font-medium">${log.gemini_calls || 0}</span></div>
+        <div>Jobs Found: <span class="text-claude-text font-medium">${log.jobs_found || 0}</span></div>
+        <div>New Jobs: <span class="text-success font-medium">+${log.new_jobs || 0}</span></div>
+        <div>Removed: <span class="text-danger font-medium">-${log.removed_jobs || 0}</span></div>
+      </div>
+      ${log.status === 'error' ? `
+        <div class="text-[10px] text-danger mt-1 bg-red-950/20 px-2 py-0.5 rounded border border-red-900/30 truncate" title="${log.error_message}">
+          Err: ${log.error_message}
+        </div>
+      ` : ''}
+    `;
+    container.appendChild(item);
+  });
 }
 
 async function loadStats() {
@@ -564,6 +622,13 @@ els.btnScrapeAll.addEventListener('click', async () => {
   }
 });
 
+// Refresh logs manually
+els.btnRefreshLogs.addEventListener('click', async () => {
+  els.btnRefreshLogs.disabled = true;
+  await loadLogs();
+  els.btnRefreshLogs.disabled = false;
+});
+
 // Filter Handlers
 els.filterLocation.addEventListener('change', () => {
   const selectedLocations = Array.from(els.filterLocation.options)
@@ -862,7 +927,8 @@ async function refreshAllData() {
     loadCompanies(),
     loadLocations(),
     loadJobs(),
-    loadSchedulerStatus()
+    loadSchedulerStatus(),
+    loadLogs()
   ]);
 }
 
@@ -875,6 +941,7 @@ async function init() {
   setInterval(() => {
     loadSchedulerStatus();
     loadStats();
+    loadLogs();
   }, 6000);
 }
 

@@ -3,6 +3,7 @@ import * as queries from '../db/queries.js';
 import { scheduler } from '../services/scheduler.js';
 import { companyNameFromUrl } from '../utils/company-name.js';
 import { logger } from '../utils/logger.js';
+import { normalizeUrl, getHostname, isMultiTenantHost } from '../utils/url.js';
 
 const router = express.Router();
 
@@ -26,10 +27,27 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    const normalizedUrl = normalizeUrl(career_url);
     // Check if company already exists
-    const existing = queries.getCompanyByUrl(career_url);
+    const existing = queries.getCompanyByUrl(normalizedUrl);
     if (existing) {
       return res.status(400).json({ error: 'A company with this career URL already exists.' });
+    }
+
+    // Hostname duplicate check (for non-multi-tenant sites)
+    const host = getHostname(normalizedUrl);
+    if (host && !isMultiTenantHost(host)) {
+      const allCompanies = queries.getCompanies();
+      const duplicateHostCompany = allCompanies.find(c => {
+        const cHost = getHostname(c.career_url);
+        return cHost === host;
+      });
+
+      if (duplicateHostCompany) {
+        return res.status(400).json({
+          error: `A company on the domain "${host}" already exists: "${duplicateHostCompany.name}".`
+        });
+      }
     }
 
     let finalName = name;
@@ -40,7 +58,7 @@ router.post('/', async (req, res) => {
       logger.info(`Derived company name from URL: "${finalName}"`);
     }
 
-    const companyId = queries.insertCompany(finalName, career_url);
+    const companyId = queries.insertCompany(finalName, normalizedUrl);
     const newCompany = queries.getCompanyById(companyId);
 
     // Trigger an initial scrape of this company in the background
@@ -69,7 +87,31 @@ router.put('/:id', (req, res) => {
       return res.status(404).json({ error: 'Company not found.' });
     }
 
-    queries.updateCompany(id, { name, career_url, status });
+    const normalizedUrl = career_url ? normalizeUrl(career_url) : existing.career_url;
+    if (career_url && normalizedUrl !== existing.career_url) {
+      const duplicate = queries.getCompanyByUrl(normalizedUrl);
+      if (duplicate) {
+        return res.status(400).json({ error: 'A company with this career URL already exists.' });
+      }
+
+      // Hostname duplicate check (for non-multi-tenant sites)
+      const host = getHostname(normalizedUrl);
+      if (host && !isMultiTenantHost(host)) {
+        const allCompanies = queries.getCompanies();
+        const duplicateHostCompany = allCompanies.find(c => {
+          const cHost = getHostname(c.career_url);
+          return cHost === host && c.id !== id;
+        });
+
+        if (duplicateHostCompany) {
+          return res.status(400).json({
+            error: `A company on the domain "${host}" already exists: "${duplicateHostCompany.name}".`
+          });
+        }
+      }
+    }
+
+    queries.updateCompany(id, { name, career_url: normalizedUrl, status });
     const updated = queries.getCompanyById(id);
     res.json({ message: 'Company updated successfully.', company: updated });
   } catch (err) {

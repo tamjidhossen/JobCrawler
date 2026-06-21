@@ -94,5 +94,7 @@ export const api = {
   
   scrapeAll: () => request('/api/scheduler/scrape-all', {
     method: 'POST'
-  })
+  }),
+  
+  getSchedulerLogs: (limit = 20) => request(`/api/scheduler/logs?limit=${limit}`)
 };

@@ -202,7 +202,8 @@ class SchedulerService {
         jobs_found: activeJobs.length,
         new_jobs: 0,
         removed_jobs: 0,
-        duration_ms: Date.now() - startTime
+        duration_ms: Date.now() - startTime,
+        gemini_calls: 0
       });
 
       logger.info(
@@ -229,11 +230,14 @@ class SchedulerService {
 
       let newJobsCount = 0;
       let newExtractedJobs = [];
+      let geminiCalls = 0;
 
       // Only call extraction if there are new detail pages crawled
       if (detailPages > 0) {
         logger.info(`[${company.name}] Step 3: Sending new details to Gemini (reading file in chunks)...`);
-        newExtractedJobs = await batchExtractJobs(company.name, company.career_url, filePath);
+        const extractResult = await batchExtractJobs(company.name, company.career_url, filePath);
+        newExtractedJobs = extractResult.jobs;
+        geminiCalls = extractResult.apiCalls;
         
         for (const rawJob of newExtractedJobs) {
           const fingerprint = generateFingerprint(rawJob, company.id);
@@ -272,7 +276,8 @@ class SchedulerService {
         jobs_found: totalJobsFound,
         new_jobs: newJobsCount,
         removed_jobs: removedCount,
-        duration_ms: Date.now() - startTime
+        duration_ms: Date.now() - startTime,
+        gemini_calls: geminiCalls
       });
 
       logger.info(
@@ -286,7 +291,9 @@ class SchedulerService {
     // CASE C: Fallback to original full flow (Single-page site or no detail links)
     logger.info(`[${company.name}] No detail links found. Falling back to full extraction.`);
     logger.info(`[${company.name}] Step 3: Sending all page text to Gemini (reading file in chunks)...`);
-    const extractedJobs = await batchExtractJobs(company.name, company.career_url, filePath);
+    const extractResult = await batchExtractJobs(company.name, company.career_url, filePath);
+    const extractedJobs = extractResult.jobs;
+    const geminiCalls = extractResult.apiCalls;
     if (extractedJobs.length === 0) {
       logger.warn(`[${company.name}] Gemini extracted 0 jobs. Page may require auth or use unsupported rendering.`);
     }
@@ -303,7 +310,8 @@ class SchedulerService {
       jobs_found: diffResult.jobsFound,
       new_jobs: diffResult.newJobsCount,
       removed_jobs: diffResult.removedJobsCount,
-      duration_ms: Date.now() - startTime
+      duration_ms: Date.now() - startTime,
+      gemini_calls: geminiCalls
     });
 
     logger.info(

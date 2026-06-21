@@ -14,6 +14,7 @@ const state = {
     status: 'new', // Default filter to 'new' postings as requested by flow
     jobType: '',
     techOnly: '',
+    firstSeen: '',
     page: 1,
     limit: 25
   },
@@ -50,6 +51,7 @@ const els = {
   filterStatus: document.getElementById('filter-status'),
   filterType: document.getElementById('filter-type'),
   filterTechOnly: document.getElementById('filter-tech-only'),
+  filterFirstSeen: document.getElementById('filter-first-seen'),
   btnClearFilters: document.getElementById('btn-clear-filters'),
 
   // Lists Containers
@@ -108,6 +110,14 @@ const els = {
   btnCancelTelegram: document.getElementById('btn-cancel-telegram'),
   btnSendTelegram: document.getElementById('btn-send-telegram'),
 
+  // WhatsApp Broadcast Modal
+  btnWhatsappPreview: document.getElementById('btn-whatsapp-preview'),
+  whatsappModal: document.getElementById('whatsapp-modal'),
+  whatsappModalClose: document.getElementById('whatsapp-modal-close'),
+  whatsappMessageText: document.getElementById('whatsapp-message-text'),
+  btnCancelWhatsapp: document.getElementById('btn-cancel-whatsapp'),
+  btnCopyWhatsapp: document.getElementById('btn-copy-whatsapp'),
+
   // Toast Container
   toastContainer: document.getElementById('toast-container'),
 
@@ -138,7 +148,13 @@ function showToast(message, type = 'info') {
 function formatRelativeTime(dateString) {
   if (!dateString) return 'Never';
   
-  const date = new Date(dateString.replace(' ', 'T')); // Convert SQLite datetime to ISO standard format
+  let formattedString = dateString.replace(' ', 'T');
+  // SQLite timestamps are in UTC. If the string lacks a timezone specifier, append 'Z' to parse it as UTC.
+  if (!formattedString.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(formattedString)) {
+    formattedString += 'Z';
+  }
+  
+  const date = new Date(formattedString);
   const now = new Date();
   const diffMs = now - date;
   
@@ -291,7 +307,7 @@ async function loadLocations() {
     });
 
     // Restore selection from DOM or from state
-    const saved = selectedLocations.length > 0 ? selectedLocations : (state.filters.locations || '').split(',').filter(Boolean);
+    const saved = selectedLocations.length > 0 ? selectedLocations : (state.filters.locations || '').split(';').filter(Boolean);
     if (saved.length > 0) {
       Array.from(els.filterLocation.options).forEach(o => {
         o.selected = saved.includes(o.value);
@@ -634,7 +650,7 @@ els.filterLocation.addEventListener('change', () => {
   const selectedLocations = Array.from(els.filterLocation.options)
     .filter(o => o.selected && o.value)
     .map(o => o.value)
-    .join(',');
+    .join(';');
   state.filters.locations = selectedLocations;
   state.filters.page = 1;
   saveFilters();
@@ -657,6 +673,13 @@ els.filterType.addEventListener('change', () => {
 
 els.filterTechOnly.addEventListener('change', () => {
   state.filters.techOnly = els.filterTechOnly.value;
+  state.filters.page = 1;
+  saveFilters();
+  loadJobs();
+});
+
+els.filterFirstSeen.addEventListener('change', () => {
+  state.filters.firstSeen = els.filterFirstSeen.value;
   state.filters.page = 1;
   saveFilters();
   loadJobs();
@@ -709,6 +732,7 @@ els.btnClearFilters.addEventListener('click', () => {
   els.filterStatus.value = ''; // Let's keep status empty (All Statuses) on clear
   els.filterType.value = '';
   els.filterTechOnly.value = '';
+  if (els.filterFirstSeen) els.filterFirstSeen.value = '';
   
   state.filters.keyword = '';
   state.filters.titleKeyword = '';
@@ -717,6 +741,7 @@ els.btnClearFilters.addEventListener('click', () => {
   state.filters.status = '';
   state.filters.jobType = '';
   state.filters.techOnly = '';
+  state.filters.firstSeen = '';
   state.filters.page = 1;
   
   saveFilters();
@@ -841,9 +866,57 @@ els.btnTelegramPreview.addEventListener('click', openTelegramModal);
 els.telegramModalClose.addEventListener('click', closeTelegramModal);
 els.btnCancelTelegram.addEventListener('click', closeTelegramModal);
 
+// WhatsApp Listeners
+async function openWhatsappModal() {
+  const span = els.btnWhatsappPreview.querySelector('span');
+  const originalText = span ? span.innerText : 'Copy for WhatsApp';
+  els.btnWhatsappPreview.disabled = true;
+  if (span) span.innerText = 'Preparing...';
+
+  try {
+    const data = await api.getWhatsAppPreview(state.filters);
+    if (!data.text || data.count === 0) {
+      showToast('No jobs found matching the selected filters to copy.', 'info');
+      return;
+    }
+
+    els.whatsappMessageText.value = data.text;
+    els.whatsappModal.style.display = 'flex';
+  } catch (err) {
+    loggerError('Error loading WhatsApp preview', err);
+  } finally {
+    els.btnWhatsappPreview.disabled = false;
+    if (span) span.innerText = originalText;
+  }
+}
+
+function closeWhatsappModal() {
+  els.whatsappModal.style.display = 'none';
+  els.whatsappMessageText.value = '';
+}
+
+async function copyWhatsappToClipboard() {
+  const text = els.whatsappMessageText.value;
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Copied to clipboard successfully!', 'success');
+    closeWhatsappModal();
+  } catch (err) {
+    loggerError('Failed to copy text to clipboard', err);
+  }
+}
+
+els.btnWhatsappPreview.addEventListener('click', openWhatsappModal);
+els.whatsappModalClose.addEventListener('click', closeWhatsappModal);
+els.btnCancelWhatsapp.addEventListener('click', closeWhatsappModal);
+els.btnCopyWhatsapp.addEventListener('click', copyWhatsappToClipboard);
+
 window.addEventListener('click', (e) => {
   if (e.target === els.telegramModal) {
     closeTelegramModal();
+  }
+  if (e.target === els.whatsappModal) {
+    closeWhatsappModal();
   }
 });
 
@@ -905,7 +978,7 @@ function loadSavedFilters() {
       if (els.excludeTitleKeyword) els.excludeTitleKeyword.value = state.filters.excludeTitleKeyword || '';
       
       if (els.filterLocation && state.filters.locations) {
-        const savedLocations = state.filters.locations.split(',').filter(Boolean);
+        const savedLocations = state.filters.locations.split(';').filter(Boolean);
         Array.from(els.filterLocation.options).forEach(o => {
           o.selected = savedLocations.includes(o.value);
         });
@@ -915,6 +988,7 @@ function loadSavedFilters() {
       if (els.filterStatus) els.filterStatus.value = state.filters.status || '';
       if (els.filterType) els.filterType.value = state.filters.jobType || '';
       if (els.filterTechOnly) els.filterTechOnly.value = state.filters.techOnly || '';
+      if (els.filterFirstSeen) els.filterFirstSeen.value = state.filters.firstSeen || '';
     }
   } catch (err) {
     console.error('Error loading saved filters:', err);

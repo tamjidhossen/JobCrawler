@@ -61,6 +61,7 @@ export const api = {
     if (filters.status) params.append('status', filters.status);
     if (filters.jobType) params.append('jobType', filters.jobType);
     if (filters.techOnly !== undefined) params.append('techOnly', filters.techOnly);
+    if (filters.firstSeen) params.append('firstSeen', filters.firstSeen);
     if (filters.page) params.append('page', filters.page);
     if (filters.limit) params.append('limit', filters.limit);
     
@@ -75,6 +76,12 @@ export const api = {
 
   // Telegram Broadcast API
   getTelegramPreview: (filters = {}) => request('/api/jobs/telegram-preview', {
+    method: 'POST',
+    body: filters
+  }),
+
+  // WhatsApp Broadcast API
+  getWhatsAppPreview: (filters = {}) => request('/api/jobs/whatsapp-preview', {
     method: 'POST',
     body: filters
   }),

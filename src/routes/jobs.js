@@ -25,6 +25,7 @@ router.get('/', (req, res) => {
     const status = req.query.status || '';
     const jobType = req.query.jobType || '';
     const techOnly = req.query.techOnly || '';
+    const firstSeen = req.query.firstSeen || '';
     const page = req.query.page ? parseInt(req.query.page) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit) : 25;
     const offset = (page - 1) * limit;
@@ -37,6 +38,7 @@ router.get('/', (req, res) => {
       status,
       jobType,
       techOnly,
+      firstSeen,
       limit,
       offset
     });
@@ -77,6 +79,7 @@ router.post('/telegram-preview', (req, res) => {
     const status = req.body.status || '';
     const jobType = req.body.jobType || '';
     const techOnly = req.body.techOnly || '';
+    const firstSeen = req.body.firstSeen || '';
 
     // Fetch all matching jobs without pagination limits
     const result = queries.getFilteredJobs({
@@ -87,6 +90,7 @@ router.post('/telegram-preview', (req, res) => {
       status,
       jobType,
       techOnly,
+      firstSeen,
       limit: null,
       offset: 0
     });
@@ -143,6 +147,77 @@ router.post('/telegram-preview', (req, res) => {
   } catch (err) {
     logger.error('Failed to generate Telegram preview', { error: err.message });
     res.status(500).json({ error: 'Failed to generate Telegram preview.' });
+  }
+});
+
+// Generate WhatsApp message preview for currently filtered jobs
+router.post('/whatsapp-preview', (req, res) => {
+  try {
+    const keyword = req.body.keyword || '';
+    const titleKeyword = req.body.titleKeyword || '';
+    const excludeTitleKeyword = req.body.excludeTitleKeyword || '';
+    const locations = req.body.locations || '';
+    const status = req.body.status || '';
+    const jobType = req.body.jobType || '';
+    const techOnly = req.body.techOnly || '';
+    const firstSeen = req.body.firstSeen || '';
+
+    // Fetch all matching jobs without pagination limits
+    const result = queries.getFilteredJobs({
+      keyword,
+      titleKeyword,
+      excludeTitleKeyword,
+      locations,
+      status,
+      jobType,
+      techOnly,
+      firstSeen,
+      limit: null,
+      offset: 0
+    });
+
+    const jobs = result.jobs;
+    if (jobs.length === 0) {
+      return res.json({ text: '', count: 0 });
+    }
+
+    // Group by company
+    const grouped = {};
+    jobs.forEach(job => {
+      if (!grouped[job.company_name]) {
+        grouped[job.company_name] = [];
+      }
+      grouped[job.company_name].push(job);
+    });
+
+    const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    const todayStr = new Date().toLocaleDateString('en-US', dateOptions);
+
+    let message = `*📅 Jobs Broadcast — ${todayStr}*\n`;
+    message += `Total Vetted Postings: *${jobs.length}*\n\n`;
+    for (const [company, companyJobs] of Object.entries(grouped)) {
+      message += `*🏢 ${company}*\n`;
+      companyJobs.forEach(job => {
+        const details = [];
+        if (job.location) details.push(job.location);
+        if (job.salary_range) details.push(job.salary_range);
+        else if (job.job_type) details.push(job.job_type);
+
+        const detailsStr = details.length > 0 ? ` | ${details.join(' | ')}` : '';
+        
+        if (job.job_url) {
+          message += `• *${job.title}*${detailsStr}\n  Link: ${job.job_url}\n`;
+        } else {
+          message += `• *${job.title}*${detailsStr}\n`;
+        }
+      });
+      message += `\n`;
+    }
+
+    res.json({ text: message.trim(), count: jobs.length });
+  } catch (err) {
+    logger.error('Failed to generate WhatsApp preview', { error: err.message });
+    res.status(500).json({ error: 'Failed to generate WhatsApp preview.' });
   }
 });
 

@@ -88,7 +88,7 @@ export const updateCompanyListingHash = (id, hash) => {
 // JOBS QUERIES
 // ==========================================
 
-export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, locations, status, jobType, techOnly, limit = 25, offset = 0 }) => {
+export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, locations, status, jobType, techOnly, firstSeen, limit = 25, offset = 0 }) => {
   demoteOldNewJobs();
   let query = `
     SELECT j.*, c.name as company_name 
@@ -142,7 +142,7 @@ export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, lo
   }
 
   if (locations) {
-    const list = locations.split(',').map(l => l.trim()).filter(Boolean);
+    const list = locations.split(';').map(l => l.trim()).filter(Boolean);
     if (list.length > 0) {
       const placeholders = list.map(() => '?').join(',');
       query += ` AND j.location IN (${placeholders})`;
@@ -160,15 +160,20 @@ export const getFilteredJobs = ({ keyword, titleKeyword, excludeTitleKeyword, lo
     params.push(jobType);
   }
 
+  if (firstSeen) {
+    query += ` AND j.first_seen_at >= datetime('now', ?)`;
+    params.push(`-${firstSeen} hours`);
+  }
+
   // Count query for pagination
   const countQuery = `SELECT COUNT(*) as total FROM (${query})`;
   const totalCount = db.prepare(countQuery).get(...params).total;
 
   // Order and Paginate
   if (limit === null) {
-    query += ` ORDER BY j.status = 'new' DESC, j.last_seen_at DESC, j.first_seen_at DESC`;
+    query += ` ORDER BY j.first_seen_at DESC`;
   } else {
-    query += ` ORDER BY j.status = 'new' DESC, j.last_seen_at DESC, j.first_seen_at DESC LIMIT ? OFFSET ?`;
+    query += ` ORDER BY j.first_seen_at DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
   }
 
